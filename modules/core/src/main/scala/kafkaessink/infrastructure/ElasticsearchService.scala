@@ -41,7 +41,7 @@ class ElasticsearchServiceLive(
       .flatMap(response =>
         if response.isError then
           logger.error(s"Failed to index documents: ${response.error}")
-        else logger.info(s"Successfully indexed documents into $indexName")
+        else logger.info(s"Successfully indexed ${records.size} documents into $indexName")
       )
       .onError(e => logger.error(e)(s"Failed to index documents"))
   }

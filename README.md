@@ -32,32 +32,23 @@ sbt run
 ```
 
 ## Runing unit test
+
 ```bash
 sbt test
 ```
 
 ## Running it test
+
 ```bash
 docker-compose up -d
 ```
 
-Log into the running container:
-
-```bash
-docker exec -it <container_id>  bash
-```
-
-```bash
-/opt/landoop/kafka/bin/kafka-topics \
-  --create \
-  --bootstrap-server localhost:9092 \
-  --replication-factor 1 \
-  --partitions 3 \
-  --topic website-clicks
-```
-
 ```bash
 sbt itTest
+```
+
+```bash
+docker-compose down
 ```
 
 ## Error Handling

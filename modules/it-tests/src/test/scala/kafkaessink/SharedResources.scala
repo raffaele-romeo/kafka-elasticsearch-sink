@@ -27,54 +27,8 @@ final case class SharedResources(
 )
 
 object SharedResources extends GlobalResource {
-  private val FastDataDevServiceName   = "fast-data-dev"
-  private val ElasticsearchServiceName = "elasticsearch"
-  private val KafkaTopicName           = "website-clicks"
-
   override def sharedResources(global: GlobalWrite): Resource[IO, Unit] = {
     for {
-      dockerCompose <- startDockerCompose()
-      mappedSchemaRegistryServiceHost = dockerCompose.getServiceHost(
-        FastDataDevServiceName,
-        8081
-      )
-      mappedSchemaRegistryServicePort = dockerCompose.getServicePort(
-        FastDataDevServiceName,
-        8081
-      )
-
-      mappedKafkaServiceHost = dockerCompose.getServiceHost(
-        FastDataDevServiceName,
-        9092
-      )
-      mappedKafkaServicePort = dockerCompose.getServicePort(
-        FastDataDevServiceName,
-        9092
-      )
-
-      mappedElasticsearchServiceHost = dockerCompose.getServiceHost(
-        ElasticsearchServiceName,
-        9200
-      )
-      mappedElasticsearchServicePort = dockerCompose.getServicePort(
-        ElasticsearchServiceName,
-        9200
-      )
-
-      appConfig = AppConfig(
-        kafka = KafkaConfig(
-          bootstrapServers = s"$mappedKafkaServiceHost:$mappedKafkaServicePort",
-          schemaRegistryUrl =
-            s"http://$mappedSchemaRegistryServiceHost:$mappedSchemaRegistryServicePort",
-          groupId = "es-sink-group",
-          topic = KafkaTopicName
-        ),
-        elasticsearch = ElasticsearchConfig(
-          mappedElasticsearchServiceHost,
-          mappedElasticsearchServicePort
-        )
-      )
-
       appConfig <- AppConfig.load.toResource
       elasticSearchService <- ElasticsearchService.resource(
         appConfig.elasticsearch,
@@ -88,8 +42,12 @@ object SharedResources extends GlobalResource {
       kafkaAdminClient <- KafkaAdminClient.resource[IO](
         AdminClientSettings(appConfig.kafka.bootstrapServers)
       )
-      _ <- kafkaAdminClient
-        .createTopic(new NewTopic(KafkaTopicName, 3, 1.toShort))
+      topicsName <- kafkaAdminClient.listTopics.names.toResource
+      _ <- IO
+        .whenA(!topicsName(appConfig.kafka.topic))(
+          kafkaAdminClient
+            .createTopic(new NewTopic(appConfig.kafka.topic, 3, 1.toShort))
+        )
         .toResource
 
       avroSettingsSharedClient <- Avro
@@ -112,29 +70,4 @@ object SharedResources extends GlobalResource {
 
     } yield ()
   }
-
-  private val dockerComposeDef: DockerComposeContainer.Def = {
-    DockerComposeContainer.Def(
-      composeFiles =
-        DockerComposeContainer.fileToEither(File("../../docker-compose.yml")),
-      exposedServices = Seq(
-        ExposedService(FastDataDevServiceName, 8081),
-        ExposedService(FastDataDevServiceName, 9092),
-        ExposedService(ElasticsearchServiceName, 9200)
-      ),
-      logConsumers = Seq(
-        ServiceLogConsumer(
-          FastDataDevServiceName,
-          line => println(line.getUtf8String)
-        )
-      )
-    )
-  }
-
-  private def startDockerCompose(): Resource[IO, DockerComposeContainer] =
-    Resource
-      .make(IO.blocking(dockerComposeDef.start())) { container =>
-        IO.blocking(container.stop())
-      }
-
 }

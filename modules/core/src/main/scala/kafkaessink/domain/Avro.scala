@@ -10,5 +10,5 @@ object Avro {
     SchemaRegistryClientSettings[IO](schemaRegistryUrl)
       .withAuth(Auth.None)
       .createSchemaRegistryClient
-      .map(AvroSettings[IO](_).withAutoRegisterSchemas(false))
+      .map(AvroSettings[IO](_))
 }

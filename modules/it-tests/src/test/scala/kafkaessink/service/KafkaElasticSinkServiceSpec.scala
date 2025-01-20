@@ -13,6 +13,7 @@ import fs2.kafka.consumer.KafkaConsumeChunk.CommitNow
 import fs2.Chunk
 import kafkaessink.SharedResources
 import kafkaessink.KafkaProducerSettings
+import scala.concurrent.duration.*
 
 final class KafkaElasticSinkServiceSpec(global: GlobalRead) extends IOSuite {
   override type Res = SharedResources
@@ -20,13 +21,9 @@ final class KafkaElasticSinkServiceSpec(global: GlobalRead) extends IOSuite {
   override def sharedResource: Resource[IO, Res] =
     global.getOrFailR[SharedResources](None)
 
-  override def maxParallelism = 1
-
   test(
     "KafkaElasticSinkService.run should consume records from Kafka topic and write them to Elasticsearch"
   ) { deps =>
-    val instant = Instant.parse("2025-01-01T14:17:10Z")
-
     val records =
       Gen.listOfN(10, ClickRecordGenerators.clickRecordGen).sample.get
 
@@ -35,6 +32,7 @@ final class KafkaElasticSinkServiceSpec(global: GlobalRead) extends IOSuite {
     )
 
     for {
+      fiber         <- deps.kafkaElasticSinkService.run.start
       producerSetting <- KafkaProducerSettings.producerSettings(
         deps.config.kafka
       )
@@ -45,11 +43,12 @@ final class KafkaElasticSinkServiceSpec(global: GlobalRead) extends IOSuite {
         )
         .compile
         .drain
-      nowInstant <- IO.realTimeInstant
-      _          <- deps.kafkaElasticSinkService.run
+      nowInstant <- IO.realTimeInstant 
+      _ <- IO.sleep(4.seconds) 
       result <- deps.elasticsearchService.query(
         nowInstant
       )
+      _ <- fiber.cancel
     } yield expect(result.size == 10)
 
   }
